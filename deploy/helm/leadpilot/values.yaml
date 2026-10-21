@@ -1,0 +1,66 @@
+image:
+  api: ghcr.io/yaon1/leadpilot-api
+  web: ghcr.io/yaon1/leadpilot-web
+  tag: ""            # defaults to .Chart.AppVersion
+  pullPolicy: IfNotPresent
+
+# External PostgreSQL (with pgvector) and Redis. Bring your own (managed DB, operators, ...).
+database:
+  # Name of an existing Secret with key DATABASE_URL. Recommended.
+  existingSecret: ""
+  url: ""           # used only when existingSecret is empty (dev)
+redis:
+  url: redis://redis:6379
+
+# Non-secret settings -> ConfigMap
+config:
+  LLM_PROVIDER: mock
+  LLM_MODEL: ""
+  EMBEDDINGS_PROVIDER: hash
+  CRM_PROVIDER: mock
+  LOG_LEVEL: info
+  RAG_TOP_K: "4"
+  WORKER_CONCURRENCY: "4"
+  OTEL_EXPORTER_OTLP_ENDPOINT: ""
+
+# Secret settings (ANTHROPIC_API_KEY, OPENAI_API_KEY, BITRIX24_WEBHOOK_URL, AMOCRM_ACCESS_TOKEN,
+# TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET, ...). Prefer an existing Secret managed by
+# External Secrets / Sealed Secrets; `secrets` is only for quick tests.
+existingSecret: ""
+secrets: {}
+
+api:
+  replicas: 2
+  resources:
+    requests: { cpu: 100m, memory: 192Mi }
+    limits: { memory: 512Mi }
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+
+worker:
+  replicas: 2
+  resources:
+    requests: { cpu: 100m, memory: 192Mi }
+    limits: { memory: 512Mi }
+
+web:
+  replicas: 1
+  resources:
+    requests: { cpu: 20m, memory: 32Mi }
+    limits: { memory: 128Mi }
+
+migrations:
+  enabled: true      # Helm hook Job: runs migrations before install/upgrade
+
+ingress:
+  enabled: false
+  className: nginx
+  host: leadpilot.example.com
+  tls: []
+
+serviceMonitor:
+  enabled: false     # requires prometheus-operator CRDs
+  interval: 30s

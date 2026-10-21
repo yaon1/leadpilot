@@ -1,0 +1,24 @@
+{{- if .Values.ingress.enabled }}
+{{- $fullname := include "leadpilot.fullname" . -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $fullname }}
+  labels: {{- include "leadpilot.labels" . | nindent 4 }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- with .Values.ingress.tls }}
+  tls: {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          # Telegram webhook goes straight to the API; everything else via the web pod (which proxies /api).
+          - path: /v1/channels/telegram
+            pathType: Prefix
+            backend: { service: { name: {{ $fullname }}-api, port: { name: http } } }
+          - path: /
+            pathType: Prefix
+            backend: { service: { name: {{ $fullname }}-web, port: { name: http } } }
+{{- end }}

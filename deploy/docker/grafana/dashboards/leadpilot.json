@@ -1,0 +1,20 @@
+{
+  "title": "LeadPilot",
+  "uid": "leadpilot",
+  "schemaVersion": 39,
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    { "type": "timeseries", "title": "Inbound messages / min", "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "targets": [{ "expr": "sum by (channel, outcome) (rate(leadpilot_inbound_total[5m])) * 60" }] },
+    { "type": "timeseries", "title": "LLM calls by outcome / min", "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "targets": [{ "expr": "sum by (task, outcome) (rate(leadpilot_llm_requests_total[5m])) * 60" }] },
+    { "type": "timeseries", "title": "LLM latency p95, s", "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "targets": [{ "expr": "histogram_quantile(0.95, sum by (le, task) (rate(leadpilot_llm_request_duration_seconds_bucket[5m])))" }] },
+    { "type": "timeseries", "title": "Ticket transitions / min", "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "targets": [{ "expr": "sum by (status) (rate(leadpilot_ticket_transitions_total[5m])) * 60" }] },
+    { "type": "timeseries", "title": "CRM errors / min", "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 },
+      "targets": [{ "expr": "sum by (adapter, operation) (rate(leadpilot_crm_requests_total{outcome=\"error\"}[5m])) * 60" }] },
+    { "type": "timeseries", "title": "Job duration p95, s", "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 },
+      "targets": [{ "expr": "histogram_quantile(0.95, sum by (le, job) (rate(leadpilot_pipeline_duration_seconds_bucket[5m])))" }] }
+  ]
+}

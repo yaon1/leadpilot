@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "leadpilot.fullname" . }}-config
+  labels: {{- include "leadpilot.labels" . | nindent 4 }}
+data:
+  {{- range $k, $v := .Values.config }}
+  {{- if $v }}
+  {{ $k }}: {{ $v | quote }}
+  {{- end }}
+  {{- end }}
+---
+{{- if not .Values.existingSecret }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "leadpilot.secretName" . }}
+  labels: {{- include "leadpilot.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  {{- if and (not .Values.database.existingSecret) .Values.database.url }}
+  DATABASE_URL: {{ .Values.database.url | quote }}
+  {{- end }}
+  {{- range $k, $v := .Values.secrets }}
+  {{ $k }}: {{ $v | quote }}
+  {{- end }}
+{{- end }}

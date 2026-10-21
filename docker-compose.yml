@@ -1,0 +1,102 @@
+name: leadpilot
+
+x-app-env: &app-env
+  DATABASE_URL: postgres://leadpilot:leadpilot@postgres:5432/leadpilot
+  REDIS_URL: redis://redis:6379
+  CORS_ORIGIN: http://localhost:8080
+  LLM_PROVIDER: ${LLM_PROVIDER:-mock}
+  LLM_MODEL: ${LLM_MODEL:-}
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  EMBEDDINGS_PROVIDER: ${EMBEDDINGS_PROVIDER:-hash}
+  MOCK_LLM_INVALID_FIRST_ATTEMPT: ${MOCK_LLM_INVALID_FIRST_ATTEMPT:-false}
+  CRM_PROVIDER: ${CRM_PROVIDER:-mock}
+  BITRIX24_WEBHOOK_URL: ${BITRIX24_WEBHOOK_URL:-}
+  AMOCRM_BASE_URL: ${AMOCRM_BASE_URL:-}
+  AMOCRM_ACCESS_TOKEN: ${AMOCRM_ACCESS_TOKEN:-}
+  TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+  TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
+  TELEGRAM_TENANT: ${TELEGRAM_TENANT:-demo}
+  DEMO_ADMIN_KEY: ${DEMO_ADMIN_KEY:-lp_dev_admin_change_me}
+  DEMO_OPERATOR_KEY: ${DEMO_OPERATOR_KEY:-lp_dev_operator_change_me}
+  DEMO_AGENT_KEY: ${DEMO_AGENT_KEY:-lp_dev_agent_change_me}
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: leadpilot
+      POSTGRES_PASSWORD: leadpilot
+      POSTGRES_DB: leadpilot
+    volumes: [pgdata:/var/lib/postgresql/data]
+    ports: ['5432:5432']
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U leadpilot']
+      interval: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports: ['6379:6379']
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 3s
+      retries: 20
+
+  # One-shot: migrations + demo seed (idempotent)
+  migrate:
+    build: { context: ., target: api }
+    image: leadpilot-api:local
+    environment: *app-env
+    command: ['sh', '-c', 'node dist/cli/migrate.js && node dist/cli/seed.js']
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  api:
+    image: leadpilot-api:local
+    environment: { <<: *app-env, OTEL_SERVICE_NAME: leadpilot-api }
+    ports: ['3000:3000']
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+
+  worker:
+    image: leadpilot-api:local
+    environment: { <<: *app-env, OTEL_SERVICE_NAME: leadpilot-worker }
+    command: ['node', '--import', './dist/tracing.js', 'dist/worker.js']
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:9465/healthz >/dev/null || exit 1']
+      interval: 15s
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+
+  web:
+    build: { context: ., target: web }
+    ports: ['${WEB_PORT:-8080}:80']
+    depends_on: [api]
+
+  # --- docker compose --profile observability up ---
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    profiles: [observability]
+    volumes: ['./deploy/docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro']
+    ports: ['9090:9090']
+
+  jaeger:
+    image: jaegertracing/jaeger:2.10.0
+    profiles: [observability]
+    ports: ['16686:16686', '4318:4318']
+
+  grafana:
+    image: grafana/grafana:12.2.0
+    profiles: [observability]
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: 'true'
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+    volumes: ['./deploy/docker/grafana:/etc/grafana/provisioning:ro']
+    ports: ['3001:3000']
+
+volumes:
+  pgdata:

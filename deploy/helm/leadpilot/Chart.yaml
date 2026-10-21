@@ -1,0 +1,6 @@
+apiVersion: v2
+name: leadpilot
+description: AI intake copilot for sales & support teams (API, worker, operator dashboard)
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

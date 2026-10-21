@@ -1,0 +1,47 @@
+{{- $fullname := include "leadpilot.fullname" . -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}-worker
+  labels: {{- include "leadpilot.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  replicas: {{ .Values.worker.replicas }}
+  selector:
+    matchLabels: {{- include "leadpilot.selector" (dict "root" . "component" "worker") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "leadpilot.selector" (dict "root" . "component" "worker") | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/config.yaml") . | sha256sum }}
+    spec:
+      # BullMQ finishes in-flight jobs on SIGTERM; give LLM calls time to complete.
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: worker
+          image: "{{ .Values.image.api }}:{{ include "leadpilot.tag" . }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["node", "--import", "./dist/tracing.js", "dist/worker.js"]
+          env:
+            {{- include "leadpilot.env" . | nindent 12 }}
+            - name: OTEL_SERVICE_NAME
+              value: leadpilot-worker
+          envFrom: {{- include "leadpilot.envFrom" . | nindent 12 }}
+          ports:
+            - { name: metrics, containerPort: 9465 }
+          livenessProbe:
+            httpGet: { path: /healthz, port: metrics }
+            periodSeconds: 20
+          resources: {{- toYaml .Values.worker.resources | nindent 12 }}
+          securityContext: {{- include "leadpilot.securityContext" . | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-worker-metrics
+  labels: {{- include "leadpilot.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  selector: {{- include "leadpilot.selector" (dict "root" . "component" "worker") | nindent 4 }}
+  ports:
+    - { name: metrics, port: 9465, targetPort: metrics }
